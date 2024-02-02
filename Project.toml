@@ -1,0 +1,15 @@
+name = "MatoParsing"
+uuid = "fc9646d5-65ee-4cac-8eba-f01f57de2e47"
+authors = ["Fabio Mazza <fab4mazz@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Parquet = "626c502c-15b0-58ad-a749-f091afb673ae"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+PyFormattedStrings = "5f89f4a4-a228-4886-b223-c468a82ed5b9"
+PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"

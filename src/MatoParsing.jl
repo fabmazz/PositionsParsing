@@ -1,6 +1,7 @@
 module MatoParsing
 
 using DataFrames
+using PyFormattedStrings
 import Base: length
 
 export haversine_d, length

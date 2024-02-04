@@ -19,6 +19,7 @@ distance_df(tr::AbstractDataFrame) =  haversine_d.(tr.lat[1:end-1],tr.lon[1:end-
 _distance_df(mdf::AbstractDataFrame,i0::Int,i1::Int) = haversine_d.(mdf.lat[i0:i1-1],mdf.lon[i0:i1-1],mdf.lat[i0+1:i1],mdf.lon[i0+1:i1])
 
 timediff(mdf::AbstractDataFrame) = mdf.timerec[2:end] .- mdf.timerec[1:end-1]
+timediff(mdf::AbstractDataFrame,i0::Integer,i1::Integer) = mdf.timerec[i0+1:i1] .- mdf.timerec[i0:i1-1]
 
 function filter_positions_bbox(df, BBOX_LIMS)
     valid =@. (df.lat > BBOX_LIMS[1][1]) & (df.lat < BBOX_LIMS[1][2]) & (df.lon > BBOX_LIMS[2][1]) & (df.lon < BBOX_LIMS[2][2]);

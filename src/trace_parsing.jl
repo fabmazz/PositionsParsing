@@ -14,6 +14,12 @@
 end
 =#
 
+
+distance_df(tr::AbstractDataFrame) =  haversine_d.(tr.lat[1:end-1],tr.lon[1:end-1],tr.lat[2:end],tr.lon[2:end])
+_distance_df(mdf::AbstractDataFrame,i0::Int,i1::Int) = haversine_d.(mdf.lat[i0:i1-1],mdf.lon[i0:i1-1],mdf.lat[i0+1:i1],mdf.lon[i0+1:i1])
+
+timediff(mdf::AbstractDataFrame) = mdf.timerec[2:end] .- mdf.timerec[1:end-1]
+
 function filter_positions_bbox(df, BBOX_LIMS)
     valid =@. (df.lat > BBOX_LIMS[1][1]) & (df.lat < BBOX_LIMS[1][2]) & (df.lon > BBOX_LIMS[2][1]) & (df.lon < BBOX_LIMS[2][2]);
     df_corr = df[valid,:]
@@ -45,10 +51,31 @@ function cut_trace_time(trace, mins_pass::Number)
     out_ls
 end
 
-distance_df = tr -> haversine_d.(tr.lat[1:end-1],tr.lon[1:end-1],tr.lat[2:end],tr.lon[2:end])
+function cut_trace_time_dist(trace::AbstractDataFrame, mins_pass::Number, dist_meters::Number)
+    #distance = haversine_d.(trace.lat[1:end-1],trace.lon[1:end-1],trace.lat[2:end],trace.lon[2:end])
+    nt = length(trace.timerec)
+    times = trace.timerec[2:end].-trace.timerec[1:end-1]
+    dist = distance_df(trace)
+    idcs = findall(@. (times > mins_pass*60) | (dist > dist_meters))
+    newidcs = idcs.+1
+    if length(idcs) == 0
+        return [trace]
+    end
 
-#distance_df(tr::AbstractDataFrame) =  haversine_d.(tr.lat[1:end-1],tr.lon[1:end-1],tr.lat[2:end],tr.lon[2:end])
-_distance_df(mdf::AbstractDataFrame,i0::Int,i1::Int) = haversine_d.(mdf.lat[i0:i1-1],mdf.lon[i0:i1-1],mdf.lat[i0+1:i1],mdf.lon[i0+1:i1])
+    out_ls = DataFrame[]
+    si = 1
+    for ind in idcs
+        push!(out_ls,trace[si:ind,:])
+        si = ind+1
+    end
+    finidc = idcs[end]
+    if finidc < nt
+        push!(out_ls, trace[finidc+1:end,:])
+    end
+    #println("Have $(length(out_ls)) dfs")
+    out_ls
+end
+
 
 function row_avg(df, j, i, count)
     for key in [:lat, :lon, :heading, :speed]
@@ -168,6 +195,8 @@ _speed(dist, time) = @. dist *3.6 / time
 
 function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Vector,speed_thrs::Number)
     #jend = jend-1
+
+    ## i is the index that is the last correct point
     dist = haversine_d.(mdf.lat[i],mdf.lon[i], mdf.lat[i+1:jend],mdf.lon[i+1:jend])
     ibest = argmin(dist)#+i
     #println("$i $jend, dist: $dist, min at $(argmin(dist)) -> $(ibest+i)")
@@ -175,16 +204,18 @@ function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Ve
     jbest = ibest+i
     #disttot = sum((@. haversine_d(mdf.lat[i:jbest-1],mdf.lon[i:jbest-1],mdf.lat[i+1:jbest],mdf.lon[i+1:jbest]) ))#MatoParsing.distance_df(mdf[i:jbest,:]))
     disttot = sum(_distance_df(mdf, i, jbest))
-    #println("distlong: $disttot, mindist: $mindist,  ratio: $(disttot/mindist)")
+    
     tdiff = mdf.timerec[jbest]-mdf.timerec[i]
     ## new speed
     newspeed = _speed(mindist, tdiff) #mindist *3.6 / tdiff
     oldspeed = _speed(disttot, tdiff)
+
+    #println("distlong: $disttot, mindist: $mindist,  ratio: $(disttot/mindist), newspeed $(round(newspeed;digits=1)) oldspeed $(round(oldspeed;digits=1))")
     
-    if (disttot/mindist) > 15 && (newspeed < speed_thrs)
+    if ( (disttot/mindist) > 15 || (oldspeed > speed_thrs) )&& (newspeed < speed_thrs)  
         ## cut trace
         keep[i+1:jbest-1] .= false
-        println(f"Remove jump of {disttot:4.1f} m -> {mindist:3.1f}, old speed: {oldspeed:3.1f} new speed: {newspeed:3.1f}")
+        println(f"Remove {jbest-i-1}-jump of {disttot:4.1f} m -> {mindist:3.1f}, old speed: {oldspeed:3.1f} new speed: {newspeed:3.1f}")
         if tdiff > 60
             println("Warning: removing loop with wrong speed creates time delta of $tdiff s")
         end
@@ -195,10 +226,19 @@ function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_th
 
     #dist = MatoParsing.distance_df(mdf)
     lendf = size(mdf,1)
+    if lendf < 3
+        return mdf
+    end
     times = mdf.timerec[2:end] .- mdf.timerec[1:end-1]
     speed = _speed(dist,times) #@. dist *3.6 / times;
+    #dist_thresh = max(500.0,quantile(dist,0.95))
+    if quantile(dist,0.95) < 500
+        dist_thresh = 500
+    else
+        dist_thresh = 1000
+    end
 
-    mk = speed .> speed_thrs
+    mk =@. (speed > speed_thrs) | (dist > dist_thresh) 
     if !any(mk) || all(mk)
         ## in both cases there is nothing that can be done
         return mdf

@@ -1,25 +1,13 @@
-#=function cut_trace_time(df_mat, mins):
-    tdiff=df_nol["timerec"].diff().dt.seconds()
-    tdiff[0]=0
-    iidcs=np.where(tdiff > mins*60)[0]
-
-    s=0
-    datfs = []
-    for i in iidcs:
-        datfs.append(df_nol[s:i])
-        s=i
-    end
-    datfs.append(df_nol[s:])
-    return datfs
-end
-=#
-
 
 distance_df(tr::AbstractDataFrame) =  haversine_d.(tr.lat[1:end-1],tr.lon[1:end-1],tr.lat[2:end],tr.lon[2:end])
-_distance_df(mdf::AbstractDataFrame,i0::Int,i1::Int) = haversine_d.(mdf.lat[i0:i1-1],mdf.lon[i0:i1-1],mdf.lat[i0+1:i1],mdf.lon[i0+1:i1])
+distance_df(mdf::AbstractDataFrame,i0::Int,i1::Int) = haversine_d.(mdf.lat[i0:i1-1],mdf.lon[i0:i1-1],mdf.lat[i0+1:i1],mdf.lon[i0+1:i1])
+
+haversine_d(df::AbstractDataFrame, i::Integer, j::Integer) = haversine_d(df.lat[i],df.lon[i],df.lat[j],df.lon[j])
 
 timediff(mdf::AbstractDataFrame) = mdf.timerec[2:end] .- mdf.timerec[1:end-1]
 timediff(mdf::AbstractDataFrame,i0::Integer,i1::Integer) = mdf.timerec[i0+1:i1] .- mdf.timerec[i0:i1-1]
+
+speeds_df(mdf::AbstractDataFrame) = _speed(distance_df(mdf), timediff(mdf))
 
 function filter_positions_bbox(df, BBOX_LIMS)
     valid =@. (df.lat > BBOX_LIMS[1][1]) & (df.lat < BBOX_LIMS[1][2]) & (df.lon > BBOX_LIMS[2][1]) & (df.lon < BBOX_LIMS[2][2]);
@@ -204,7 +192,7 @@ function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Ve
     mindist = dist[ibest] == 0 ? 0.00001 : dist[ibest]
     jbest = ibest+i
     #disttot = sum((@. haversine_d(mdf.lat[i:jbest-1],mdf.lon[i:jbest-1],mdf.lat[i+1:jbest],mdf.lon[i+1:jbest]) ))#MatoParsing.distance_df(mdf[i:jbest,:]))
-    disttot = sum(_distance_df(mdf, i, jbest))
+    disttot = sum(distance_df(mdf, i, jbest))
     
     tdiff = mdf.timerec[jbest]-mdf.timerec[i]
     ## new speed
@@ -266,7 +254,7 @@ function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_th
             #print(mk)
             ## remove the last part
             jcut = lendf
-            disttot = sum(_distance_df(mdf, i, jcut))
+            disttot = sum(distance_df(mdf, i, jcut))
             tdiff = mdf.timerec[jcut]-mdf.timerec[i]
             avg_speed = _speed(disttot, tdiff)
             if (avg_speed > speed_thrs) && (tdiff < 60)
@@ -280,4 +268,40 @@ function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_th
     end
 
     mdf[keep,:]
+end
+
+function calc_speed_section_df(df::AbstractDataFrame)
+    idcs_change = findall((df.secIdx[2:end] .-df.secIdx[1:end-1]) .> 0)
+    idcs_change = [idcs_change.+1; length(df.secIdx)]
+    prev_i =1
+    changes = Dict{Symbol,Any}[]
+    for ii in idcs_change
+        dist = distance_df(df, prev_i, ii)
+        totdist = sum(dist)
+        tdiff = df.timerec[ii]-df.timerec[prev_i]
+        avg_speed = _speed(totdist, tdiff)
+
+        push!(changes,Dict(:section => df.secIdx[prev_i],:distance => totdist, :tottime => tdiff, :speed_avg => avg_speed, :start_t => df.timerec[prev_i],
+                :sec_len => ii-prev_i+1))
+
+        prev_i = ii
+    end
+
+    DataFrame(changes)
+end
+
+function is_order_df_correct(dfk1::AbstractDataFrame, dfk2::AbstractDataFrame)
+    m1=dfk1.timerec[1]
+    M1=dfk1.timerec[end]
+    m2=dfk2.timerec[1]
+    M2=dfk2.timerec[end]
+    order = 1
+    if (m1 > M2) && (M1 > m2)
+        order = 1
+    elseif (m2>M1)&&(M2>m1)
+        order = -1
+    else
+        order = 0
+    end
+    order
 end

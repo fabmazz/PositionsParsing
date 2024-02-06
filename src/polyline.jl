@@ -1,33 +1,3 @@
-function divide_trace_segment!(geom::AbstractDataFrame, dist, max_dist, idc_point; verbose=false)
-    @assert size(geom,1) == length(dist) + 1
-
-    npoints = Int(floor(dist[idc_point] / max_dist))
-
-    steplon = (geom[idc_point + 1, :lon] - geom[idc_point, :lon]) / (npoints + 1)
-    steplat = (geom[idc_point + 1, :lat] - geom[idc_point, :lat]) / (npoints + 1)
-
-
-    if verbose
-        println("steps: ", (steplat,steplon))
-    end
-    
-    ## adjust indices
-    geom[idc_point+1:end,:idx] .+= npoints
-    for i in 1:npoints
-        newrow = (lat=geom[idc_point, :lat] +steplat * (i + 1),
-                lon=geom[idc_point, :lon] + steplon * (i + 1), idx=idc_point+i)
-
-        if verbose
-            println(newrow)
-        end
-
-        #insert!(geom2, idc_point+i, [newp], names(geom))
-        insert!(geom,idc_point+i, newrow)
-    end
-
-    return geom, npoints
-end
-
 function add_midpoints_idc!(geom::AbstractDataFrame, npoints::Integer, idc_point::Integer; verbose=false)
 
     steplon = (geom[idc_point + 1, :lon] - geom[idc_point, :lon]) / (npoints + 1)
@@ -101,7 +71,7 @@ function add_midpoints_trace_all!(geom::AbstractDataFrame, max_dist::Number; ver
     return geom, idc_added
 end
 
-function fill_polyline_points(tracePoly::AbstractDataFrame, distMet::Number=20, sec_length::Number = 500)
+function fill_polyline_points(tracePoly::AbstractDataFrame, distMet::Number=20)
     polyLong = copy(tracePoly);
     add_midpoints_trace_all!(polyLong,distMet; verbose=false)
     dist_poly = distance_df(polyLong)
@@ -112,18 +82,30 @@ function fill_polyline_points(tracePoly::AbstractDataFrame, distMet::Number=20, 
         mask[findall(dist_poly.==0)].=false
         #println(mean(mask)," ",sum(mask))
         polyLong = polyLong[mask,:]
-        dist_poly = distance_df(polyLong) #dist_poly[dist_poly.>0]
+        dist_poly = distance_df(polyLong)
     end
     @assert sum(dist_poly.==0) == 0
+    polyLong[!,:idx] = collect(1:size(polyLong,1))
     #@assert sum(dist_poly.>20) == 0
+    polyLong
+end
+
+function set_sections_poly!(polyLong::AbstractDataFrame, sec_length::Number = 500,dist_start_end::Number = 30)
 
     ## assign sections
-    
-    idx_sec = Int.(floor.(cumsum([0.0;dist_poly]) / sec_length)) .+1
+    dist_poly = distance_df(polyLong)
+    dist_cum = cumsum([0.0;dist_poly])
+    i_s = findfirst(dist_cum.> dist_start_end)
+    ilast=findlast(@. (dist_cum[end] - dist_cum) > dist_start_end)
+    print("idcs: $i_s, $ilast")
+    secIdxAll = ones(Int,length(dist_cum))
+    secIdxAll[1:i_s-1] .= 1
+    iep= ilast-1
+    secIdxAll[i_s:iep] = (floor.(cumsum(dist_poly[i_s:iep])./ sec_length)).+2
+    secIdxAll[ilast:end] .= secIdxAll[iep]+1
 
-    polyLong[!,:section] = idx_sec;
-    polyLong[!,:idx] = collect(1:size(polyLong,1))
-    polyLong
+    polyLong[!,:section] = secIdxAll;
+    
 end
 
 ### closest point of the polyline to the trace

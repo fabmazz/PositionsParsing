@@ -299,7 +299,7 @@ function calc_avg_speed_section_df(df::AbstractDataFrame, polyLong::AbstractData
     for ii in idcs_change
         iprev_poly = df[prev_i,:polyPoint]
         inext_poly = df[ii,:polyPoint]
-        println("poly iprev: $iprev_poly inext: $inext_poly")
+        #println("poly iprev: $iprev_poly inext: $inext_poly")
         dist = distance_df(polyLong, iprev_poly, inext_poly)
         totdist = sum(dist)
         tdiff = df.timerec[ii]-df.timerec[prev_i]
@@ -328,4 +328,12 @@ function is_order_df_correct(dfk1::AbstractDataFrame, dfk2::AbstractDataFrame)
         order = 0
     end
     order
+end
+
+function add_stats_date(speeddf::AbstractDataFrame)
+    dates = Dates.unix2datetime.(speeddf.start_t)
+
+    speednewdf=hcat(speeddf,
+    DataFrame(map(x-> (Dates.monthday(x)..., Dates.hour(x), Dates.minute(x), Dates.dayofweek(x)),dates), [:month,:day,:hour,:minutes,:dayofweek] )
+    )
 end

@@ -270,13 +270,37 @@ function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_th
     mdf[keep,:]
 end
 
-function calc_speed_section_df(df::AbstractDataFrame)
+function calc_avg_speed_veh_df(df::AbstractDataFrame)
     idcs_change = findall((df.secIdx[2:end] .-df.secIdx[1:end-1]) .> 0)
     idcs_change = [idcs_change.+1; length(df.secIdx)]
     prev_i =1
     changes = Dict{Symbol,Any}[]
     for ii in idcs_change
         dist = distance_df(df, prev_i, ii)
+        totdist = sum(dist)
+        tdiff = df.timerec[ii]-df.timerec[prev_i]
+        avg_speed = _speed(totdist, tdiff)
+
+        push!(changes,Dict(:section => df.secIdx[prev_i],:distance => totdist, :tottime => tdiff, :speed_avg => avg_speed, :start_t => df.timerec[prev_i],
+                :sec_len => ii-prev_i+1))
+
+        prev_i = ii
+    end
+
+    DataFrame(changes)
+end
+
+function calc_avg_speed_section_df(df::AbstractDataFrame, polyLong::AbstractDataFrame)
+    idcs_change = findall((df.secIdx[2:end] .-df.secIdx[1:end-1]) .> 0)
+    idcs_change = [idcs_change.+1; length(df.secIdx)]
+    prev_i =1
+    changes = Dict{Symbol,Any}[]
+    #pp = df[1,:]
+    for ii in idcs_change
+        iprev_poly = df[prev_i,:polyPoint]
+        inext_poly = df[ii,:polyPoint]
+        println("poly iprev: $iprev_poly inext: $inext_poly")
+        dist = distance_df(polyLong, iprev_poly, inext_poly)
         totdist = sum(dist)
         tdiff = df.timerec[ii]-df.timerec[prev_i]
         avg_speed = _speed(totdist, tdiff)

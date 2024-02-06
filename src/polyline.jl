@@ -122,17 +122,18 @@ end
 
 ### closest point of the polyline to the trace
 
-function find_closest_poly_trace(trace::AbstractDataFrame, poly::AbstractDataFrame)
+function find_closest_poly_trace(trace::AbstractDataFrame, poly::AbstractDataFrame, dist_accept::Number=50)
     dist_mat =haversine_d.(trace[!,:lat],trace[!,:lon], poly[!,:lat]', poly[!,:lon]');
 
-    gg=argmin(dist_mat, dims=2)
-    dist_acc=dist_mat[gg];
+    cartidx_nearest=argmin(dist_mat, dims=2)
+    dist_actual=dist_mat[cartidx_nearest];
+    accept = vec(dist_actual .< dist_accept)
 
-    idx_nearest = vec(map(x->x[2],argmin(dist_mat, dims=2)))
+    idx_nearest = vec(map(x->x[2],cartidx_nearest))
     #trace[!,:polyPoint] = idx_nearest 
     #trace[!,:secIdx]=
     sec_nearest = poly[idx_nearest,:section];
-    return idx_nearest, sec_nearest, dist_mat
+    return accept, idx_nearest, sec_nearest, dist_mat
 end
 
 
@@ -189,7 +190,7 @@ function fix_reverting_section_postrace!(trace::AbstractDataFrame, polyLong::Abs
             diff = trace.secIdx[2:end] - trace.secIdx[1:end-1]
             println("Fixed point going too back in the section idx")
 
-        elseif diff[i-1] == 1 && diff[i+1]==1
+        elseif (i > 1) && diff[i-1] == 1 && diff[i+1]==1
             ## i has the section +1
             # fix section of prev point
             ifix0 = i+1
@@ -215,22 +216,13 @@ function fix_section_pos_trace!(trace::AbstractDataFrame, secsPoly::AbstractData
         idcs_df = findall(mask)  #df_fi = trace[mask,:]
 
         changed = zeros(Bool, length(idcs_df))
+        
         mSec = secsPoly[secsPoly.section.==sidx+1,:]
         if length(mSec) > 0
             println("sec: $sidx, $(sum(mask)); $(size(mSec)), $idcs_df")
             dist =  haversine_d.(trace[mask,:lat],trace[mask,:lon],mSec.lat, mSec.lon)
             @assert length(dist)==1
-            #print(length(dist))
-            #iact =  dist_ .< dist_thresh
-            #df_fi[iact,:secIdx] .= sidx+1
-            #println("sec 1 element idx: $idcs_df")
-            #=for (i,idx) in enumerate(idcs_df)
-                if dist[i] < dist_thresh
-                    trace[idx,:secIdx] = sidx+1
-                    changed[idx] = true
-                end
-            end
-            =#
+
             ii=idcs_df[1]
             if dist[1] < dist_thresh
                 trace[ii,:secIdx] = sidx+1
@@ -241,7 +233,24 @@ function fix_section_pos_trace!(trace::AbstractDataFrame, secsPoly::AbstractData
             _= any(changed) ? println("Raised secIdx at $ii, previous: $sidx ") : nothing
         end
 
-        ##TODO if needed: assign the previous section index
+        if sidx > 1 && !changed[1]
+            ## do the same with index sidx -1
+            mSec = secsPoly[secsPoly.section.==sidx-1,:]
+            if length(mSec) > 0
+                println("sec: $sidx, $(sum(mask)); $(size(mSec)), $idcs_df")
+                dist =  haversine_d.(trace[mask,:lat],trace[mask,:lon],mSec.lat, mSec.lon)
+                @assert length(dist)==1
+    
+                ii=idcs_df[1]
+                if dist[1] < dist_thresh
+                    trace[ii,:secIdx] = sidx-1
+                    changed[ii] = true
+                    ## fix polyPoint
+                    trace[ii,:polyPoint] = mSec.idx[1]
+                end
+                _= any(changed) ? println("Raised secIdx at $ii, previous: $sidx ") : nothing
+            end
+        end
 
     end
     

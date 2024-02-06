@@ -337,3 +337,32 @@ function add_stats_date(speeddf::AbstractDataFrame)
     DataFrame(map(x-> (Dates.monthday(x)..., Dates.hour(x), Dates.minute(x), Dates.dayofweek(x)),dates), [:month,:day,:hour,:minutes,:dayofweek] )
     )
 end
+
+"""
+Check if the vehicle is going in the opposite direction (from higher section to lower section)
+"""
+function is_direction_opposite(dftrip)
+    diffIdx = dftrip.secIdx[2:end] .- dftrip.secIdx[1:end-1]
+    #all(diffIdx.<=0) 
+    (sum(diffIdx.<0) > sum(diffIdx .> 0) ) && (dftrip.secIdx[1] > dftrip.secIdx[end])
+end
+
+"""
+Divide DataFrame trajectory if new jumps are created
+"""
+function divide_large_jumps(dftrip::AbstractDataFrame, diff_sec::Integer=2)
+    secDiff=dftrip.secIdx[2:end]-dftrip.secIdx[1:end-1]
+    icut = findall(secDiff .> diff_sec).+1
+    dfs = AbstractDataFrame[]
+    if length(icut) > 0
+        is = 1
+        for i in icut
+            push!(dfs,dftrip[is:i-1,:])
+            is = i
+        end
+        push!(dfs,dftrip[is:end,:])
+    else
+        push!(dfs,dftrip)
+    end
+    dfs
+end

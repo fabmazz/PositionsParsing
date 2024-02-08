@@ -18,5 +18,8 @@ include("io.jl")
 include("haversine.jl")
 include("trace_parsing.jl")
 include("polyline.jl")
+include("sections_stops.jl")
+
+include("processing.jl")
 
 end # module MatoParsing

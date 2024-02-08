@@ -1,3 +1,24 @@
+using Polyline
+
+using LibGEOS
+
+function get_pattern_polyline(patterns::AbstractDict, code::String)
+    pl=patterns[code]["patternGeometry"]["points"]
+
+    tracePoly = DataFrame(decodePolyline(pl),["lat","lon"])
+    tracePoly[!,:idx] = collect(1:size(tracePoly,1))
+
+    tracePoly
+end
+
+function get_pattern_stops(patterns::AbstractDict, code::String)
+    st = patterns[code]["stops"]
+    df = DataFrame(st)
+    df[!,:stopIdx]=collect(1:size(df,1))
+    
+    return df
+end
+
 function add_midpoints_idc!(geom::AbstractDataFrame, npoints::Integer, idc_point::Integer; verbose=false)
 
     steplon = (geom[idc_point + 1, :lon] - geom[idc_point, :lon]) / (npoints + 1)
@@ -10,6 +31,7 @@ function add_midpoints_idc!(geom::AbstractDataFrame, npoints::Integer, idc_point
     
     ## adjust indices
     geom[idc_point+1:end,:idx] .+= npoints
+    r = geom[idc_point,:]
     for i in 1:npoints
         newrow = (lat=geom[idc_point, :lat] +steplat * (i),
                 lon=geom[idc_point, :lon] + steplon * (i), idx=idc_point+i)
@@ -19,7 +41,7 @@ function add_midpoints_idc!(geom::AbstractDataFrame, npoints::Integer, idc_point
         end
 
         #insert!(geom2, idc_point+i, [newp], names(geom))
-        insert!(geom,idc_point+i, newrow)
+        insert!(geom,idc_point+i, merge(r,newrow))
     end
     
 end
@@ -144,7 +166,6 @@ function find_closest_poly_trace!(trace::AbstractDataFrame, poly::AbstractDataFr
 
 end
 
-using LibGEOS
 
 function remap_df_points(points)
     lats=Float64[]
@@ -156,11 +177,13 @@ function remap_df_points(points)
     DataFrame(Dict(:lat=>lats,:lon=>lons))
 end
 
-function get_nearest_point_vecs(trace::AbstractDataFrame, polySections::AbstractDataFrame)
+function get_nearest_point_vecs(trace::AbstractDataFrame, polySections::AbstractDataFrame; addsections=true)
     trace_libgeos = LibGEOS.LineString(map(x -> [x.lat,x.lon], eachrow(trace)))
     points_closest = map(x->LibGEOS.nearestPoints(trace_libgeos,LibGEOS.Point(x.lat,x.lon))[1], eachrow(polySections));
     newpoints= remap_df_points(points_closest)
-    newpoints[!,:secIdx] = polySections.section
+    if addsections
+        newpoints[!,:secIdx] = polySections.section
+    end
     newpoints
 end
 
@@ -216,17 +239,24 @@ function fix_section_pos_trace!(trace::AbstractDataFrame, secsPoly::AbstractData
         idcs_df = findall(mask)  #df_fi = trace[mask,:]
 
         changed = zeros(Bool, length(idcs_df))
+        if !(length(idcs_df)==1)
+            #println("Find single sect, length dist of section $sidx is $(length(idcs_df)), mask has $(sum(mask)) values. This should not happen")
+            #println(res)
+
+            continue
+        end
         
         mSec = secsPoly[secsPoly.section.==sidx+1,:]
         if length(mSec) > 0
-            println("sec: $sidx, $(sum(mask)); $(size(mSec)), $idcs_df")
+            println("secfix sec: $sidx, $(sum(mask)); $(size(mSec)), $idcs_df")
             dist =  haversine_d.(trace[mask,:lat],trace[mask,:lon],mSec.lat, mSec.lon)
+            
             @assert length(dist)==1
 
             ii=idcs_df[1]
             if dist[1] < dist_thresh
                 trace[ii,:secIdx] = sidx+1
-                changed[ii] = true
+                changed[1] = true
                 ## fix polyPoint
                 trace[ii,:polyPoint] = mSec.idx[1]
             end
@@ -326,7 +356,7 @@ function add_sec_points_postrace(trace::AbstractDataFrame, secsPoly::AbstractDat
             row=(df[idf-1,:])
             ## insert row in the DataFrame
             insert!(df,idf,merge(row,
-                        (lat=p.lat,lon=p.lon,timerec=tnew_i,polyPoint=idc_pol,secIdx=i+1) ))
+                        (lat=p.lat,lon=p.lon,timerec=tnew_i,polyPoint=idc_pol,secIdx=sect_idx) ))
         end
 
         

@@ -29,10 +29,16 @@ function process_polyline_sections_stops(poly::AbstractDataFrame, stops::Abstrac
     secs=find_good_sections(pc, SEC_LEN_IDEAL)
 
     pc[:,:section] = map( si -> findfirst(@. (si >= secs.stop_s) & (si < secs.stop_e)),pc.stopIdx);
-
+    
     ## add points
     
     polyLong = fill_polyline_points(pc,POLY_DIST)
+    send = polyLong[end,:section]
+    if size(polyLong[polyLong.section.==send,:],1) ==1
+        println("Last section has only one element, removing")
+        polyLong[end,:section] = polyLong[end-1,:section]
+    end
+
 
     
     mdist = distance_df(polyLong)

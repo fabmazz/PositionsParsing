@@ -344,7 +344,7 @@ Check if the vehicle is going in the opposite direction (from higher section to 
 function is_direction_opposite(dftrip)
     diffIdx = dftrip.secIdx[2:end] .- dftrip.secIdx[1:end-1]
     #all(diffIdx.<=0) 
-    (sum(diffIdx.<0) > sum(diffIdx .> 0) ) && (dftrip.secIdx[1] > dftrip.secIdx[end])
+    (sum(diffIdx.<0) > sum(diffIdx .> 0) ) && (dftrip.secIdx[1] >= dftrip.secIdx[end])
 end
 
 """

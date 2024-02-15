@@ -214,7 +214,7 @@ function fix_reverting_section_postrace!(trace::AbstractDataFrame, polyLong::Abs
             ## recalculate diff
             diff = trace.secIdx[2:end] - trace.secIdx[1:end-1]
             println("Fixed point going too back in the section idx")
-        elseif (i==len_trace-1)
+        elseif (i==len_trace-1) && (i>2)
             ## reverting in the last idx
             ifix = i+1 ## last 
             @assert ifix == len_trace
@@ -308,7 +308,8 @@ function fix_section_pos_trace!(trace::AbstractDataFrame, secsPoly::AbstractData
 end
         
 
-function add_sec_points_postrace(trace::AbstractDataFrame, secsPoly::AbstractDataFrame, newpoints, dist_thresh::Number=20; verbose=false)
+function add_sec_points_postrace(trace::AbstractDataFrame, secsPoly::AbstractDataFrame, newpoints, dist_thresh::Number=20; 
+    timecol::Symbol=:timerec, verbose=false)
     df = copy(trace)
     nump = size(newpoints,1)
 
@@ -349,8 +350,8 @@ function add_sec_points_postrace(trace::AbstractDataFrame, secsPoly::AbstractDat
                 continue
             end
         end
-        tp = df.timerec[idf-1]
-        tn = df.timerec[idf]
+        tp = df[idf-1,timecol]
+        tn = df[idf,timecol]
         
         if df.secIdx[idf] == df.secIdx[idf-1]
             throw(AssertionError("Section indices at $idf, $(idf-1) are not compatible with the closest polypoints for section $(sect_idx):\n $(df[idf-1:idf,:])\n Are you sure you haven't already run this method?"))
@@ -376,8 +377,11 @@ function add_sec_points_postrace(trace::AbstractDataFrame, secsPoly::AbstractDat
             end
             row=(df[idf-1,:])
             ## insert row in the DataFrame
-            insert!(df,idf,merge(row,
-                        (lat=p.lat,lon=p.lon,timerec=tnew_i,polyPoint=idc_pol,secIdx=sect_idx) ))
+            add =(; lat=p.lat,lon=p.lon, timecol => tnew_i, polyPoint=idc_pol,secIdx=sect_idx) 
+            newrow =merge(row, add)
+            #timecol=tnew_i
+            #println(add)
+            insert!(df,idf,newrow)
         end
 
         

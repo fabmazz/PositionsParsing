@@ -16,10 +16,10 @@ function filter_positions_bbox(df, BBOX_LIMS)
 end
 
 
-function cut_trace_time(trace, mins_pass::Number)
+function cut_trace_time(trace, mins_pass::Number, time_col::Symbol=:timerec)
     #distance = haversine_d.(trace.lat[1:end-1],trace.lon[1:end-1],trace.lat[2:end],trace.lon[2:end])
-    nt = length(trace.timerec)
-    times = trace.timerec[2:end].-trace.timerec[1:end-1]
+    nt = size(trace,1)
+    times = trace[2:end,time_col].-trace[1:end-1,time_col]
     idcs = findall(times .> mins_pass*60)
     newidcs = idcs.+1
     if length(idcs) == 0
@@ -67,7 +67,7 @@ end
 
 
 function row_avg(df, j, i, count)
-    for key in [:lat, :lon, :heading, :speed]
+    for key in [:lat, :lon, :heading]# :speed]
         if ((key==:heading) || (key==:speed)) && ismissing(df[j,key])
             df[j,key] = df[i,key] ## ignore None heading
         else
@@ -78,11 +78,11 @@ function row_avg(df, j, i, count)
     count[i]=0
 end
 
-function average_pos_equaltime(spec_df)
+function average_pos_equaltime(spec_df::AbstractDataFrame, time_col::Symbol=:timerec)
     lendf = size(spec_df,1)
     count = ones(Int,lendf) #np.ones(len(spec_df),dtype=np.int_)
-    secs_diff = spec_df.timerec[2:end].-spec_df.timerec[1:end-1];
-    trec = spec_df[!,:timerec]
+    secs_diff = spec_df[2:end,time_col].-spec_df[1:end-1,time_col];
+    #trec = spec_df[!,:timerec]
 
     idcs_eq = findall(secs_diff.==0) #np.where(secs_diff == 0)[0]
     if length(idcs_eq) == 0
@@ -111,14 +111,14 @@ function _calc_new_speed(lat, lon, timerec, i_next,i_prev)
     return dist_n, tdiff, speed_new
 end
 
-function remove_jumps_df(df::AbstractDataFrame, dist_all::Vector{T}, threshold::N = 100, debug::Bool=false) where T <: AbstractFloat where N <: Number
+function remove_jumps_df(df::AbstractDataFrame, dist_all::Vector{T}, threshold::N = 100, debug::Bool=false; time_col::Symbol=:timerec) where T <: AbstractFloat where N <: Number
     if size(df,1) < 3
         ## with 2 points there are 1 arc with speed
         return df
     end
 
-    timerec = df[!,:timerec] #.- df[1,:timerec]
-    diff_sec = df[2:end,:timerec] .- df[1:(end-1),:timerec]
+    timerec = df[!,time_col] #.- df[1,:timerec]
+    diff_sec = df[2:end,time_col] .- df[1:(end-1),time_col]
     lat = df[!,:lat]
     lon = df[!,:lon]
     if any(diff_sec .== 0)
@@ -182,7 +182,7 @@ function remove_jumps_df(df::AbstractDataFrame, dist_all::Vector{T}, threshold::
 end
 _speed(dist, time) = @. dist *3.6 / time
 
-function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Vector,speed_thrs::Number)
+function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Vector,speed_thrs::Number, time_col::Symbol)
     #jend = jend-1
 
     ## i is the index that is the last correct point
@@ -194,7 +194,7 @@ function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Ve
     #disttot = sum((@. haversine_d(mdf.lat[i:jbest-1],mdf.lon[i:jbest-1],mdf.lat[i+1:jbest],mdf.lon[i+1:jbest]) ))#MatoParsing.distance_df(mdf[i:jbest,:]))
     disttot = sum(distance_df(mdf, i, jbest))
     
-    tdiff = mdf.timerec[jbest]-mdf.timerec[i]
+    tdiff = mdf[jbest,time_col]-mdf[i,time_col]
     ## new speed
     newspeed = _speed(mindist, tdiff) #mindist *3.6 / tdiff
     oldspeed = _speed(disttot, tdiff)
@@ -211,14 +211,14 @@ function _check_cut_at_index!(mdf::AbstractDataFrame,i::Int, jend::Int, keep::Ve
     end
 end
 
-function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_thrs::Number) where T<:AbstractFloat
+function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_thrs::Number; time_col::Symbol=:timerec) where T<:AbstractFloat
 
     #dist = MatoParsing.distance_df(mdf)
     lendf = size(mdf,1)
     if lendf < 3
         return mdf
     end
-    times = mdf.timerec[2:end] .- mdf.timerec[1:end-1]
+    times = mdf[2:end,time_col] .- mdf[1:end-1,time_col]
     speed = _speed(dist,times) #@. dist *3.6 / times;
     #dist_thresh = max(500.0,quantile(dist,0.95))
     if quantile(dist,0.95) < 500
@@ -255,14 +255,14 @@ function remove_large_jumps_df(mdf::AbstractDataFrame, dist::Vector{T}, speed_th
             ## remove the last part
             jcut = lendf
             disttot = sum(distance_df(mdf, i, jcut))
-            tdiff = mdf.timerec[jcut]-mdf.timerec[i]
+            tdiff = mdf[jcut,time_col]-mdf[i, time_col]
             avg_speed = _speed(disttot, tdiff)
             if (avg_speed > speed_thrs) && (tdiff < 60)
                 keep[i+1:jcut] .= false
                 println(f"Remove sec with speed {avg_speed:3.1f} and dist {disttot:3.1f}")
             end
         else
-            _check_cut_at_index!(mdf, i, jend, keep, speed_thrs)
+            _check_cut_at_index!(mdf, i, jend, keep, speed_thrs, time_col)
         end
         
     end
@@ -290,7 +290,7 @@ function calc_avg_speed_veh_df(df::AbstractDataFrame)
     DataFrame(changes)
 end
 
-function calc_avg_speed_section_df(df::AbstractDataFrame, polyLong::AbstractDataFrame)
+function calc_avg_speed_section_df(df::AbstractDataFrame, polyLong::AbstractDataFrame; timecol::Symbol=:timerec)
     idcs_change = findall((df.secIdx[2:end] .-df.secIdx[1:end-1]) .> 0)
     idcs_change = [idcs_change.+1; length(df.secIdx)]
     prev_i =1
@@ -302,10 +302,10 @@ function calc_avg_speed_section_df(df::AbstractDataFrame, polyLong::AbstractData
         #println("poly iprev: $iprev_poly inext: $inext_poly")
         dist = distance_df(polyLong, iprev_poly, inext_poly)
         totdist = sum(dist)
-        tdiff = df.timerec[ii]-df.timerec[prev_i]
+        tdiff = df[ii,timecol]-df[prev_i,timecol]
         avg_speed = _speed(totdist, tdiff)
 
-        push!(changes,Dict(:section => df.secIdx[prev_i],:distance => totdist, :tottime => tdiff, :speed_avg => avg_speed, :start_t => df.timerec[prev_i],
+        push!(changes,Dict(:section => df.secIdx[prev_i],:distance => totdist, :tottime => tdiff, :speed_avg => avg_speed, :start_t => df[prev_i,timecol],
                 :sec_len => ii-prev_i+1))
 
         prev_i = ii
@@ -330,8 +330,8 @@ function is_order_df_correct(dfk1::AbstractDataFrame, dfk2::AbstractDataFrame)
     order
 end
 
-function add_stats_date(speeddf::AbstractDataFrame)
-    dates = Dates.unix2datetime.(speeddf.start_t)
+function add_stats_date(speeddf::AbstractDataFrame; offset_hours::Int=0)
+    dates = Dates.unix2datetime.(speeddf.start_t).+Hour(offset_hours)
 
     speednewdf=hcat(speeddf,
     DataFrame(map(x-> (Dates.monthday(x)..., Dates.hour(x), Dates.minute(x), Dates.dayofweek(x)),dates), [:month,:day,:hour,:minutes,:dayofweek] )

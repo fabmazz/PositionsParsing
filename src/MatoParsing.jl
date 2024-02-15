@@ -14,11 +14,13 @@ function linspace(s::Number,e::Number,np::Integer)
     collect(s:spacing:e)
 end
 include("io.jl")
+include("types.jl")
 
 include("haversine.jl")
 include("trace_parsing.jl")
 include("polyline.jl")
 include("sections_stops.jl")
+include("comparison.jl")
 
 include("processing.jl")
 
